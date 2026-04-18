@@ -1,2 +1,0 @@
-prefix,original_landlord,tenant_as,lease_start,abusive_ip,ips_in_prefix,first_abuse_report,decay_hours,decay_days,total_reports,abuse_score,num_transitions,num_unique_ases,pingpong_count,churn_ratio,avg_duration_hrs,min_duration_hrs
-38.255.49.0/24,931,931,2026-04-01 12:09:22,38.255.49.121,20,2026-04-08 12:02:10,167.88,7.0,1,3,266,2,264,0.992,0.08,0.0
