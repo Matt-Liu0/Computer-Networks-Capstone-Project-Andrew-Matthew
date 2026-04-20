@@ -4,28 +4,89 @@ bgp_lease_analysis.py
 Analyzes BGP lease duration distributions, intermediary churn,
 and transition frequency — no external API calls required.
 
+Prefixes are validated against RIPE inference outputs (c1inference and
+c2inferences) before analysis. Only prefixes confirmed as leased by the
+RIPE methodology proceed.
+
 Usage:
     python bgp_lease_analysis.py
 """
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import seaborn as sns
+from typing import Optional
 
-BGP_FILE = "lease_start_events.csv"
+BGP_FILE    = "./phase_2_lease_time_analysis/lease_start_events.csv"
+C1_FILE     = "c1inference"
+C2_FILE     = "c2inferences"
+
+import matplotlib.style as _mplstyle
+PLOT_STYLE = "seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in _mplstyle.available else "seaborn-whitegrid"
+PALETTE     = sns.color_palette("muted")
+
+
+# ── RIPE inference validation ──────────────────────────────────────────────────
+
+def load_ripe_inferred_prefixes(
+    c1_path: str = C1_FILE,
+    c2_path: str = C2_FILE,
+) -> set:
+    """
+    Loads the two RIPE inference output files and returns the union of all
+    prefixes confirmed as leased by the RIPE methodology.
+
+      c1inference  — Group 3: child in BGP, parent not in BGP, unrelated ASes
+      c2inferences — Group 4: both child and parent in BGP, all unrelated ASes
+
+    Returns a set of CIDR strings (e.g. '192.102.52.0/24').
+    """
+    c1 = pd.read_csv(c1_path, usecols=["prefix"])
+    c2 = pd.read_csv(c2_path, usecols=["prefix"])
+
+    c1_prefixes = set(c1["prefix"].dropna())
+    c2_prefixes = set(c2["prefix"].dropna())
+    combined    = c1_prefixes | c2_prefixes
+
+    print(f"RIPE inference validation:")
+    print(f"  c1inference  (child-in-BGP, parent-not-in-BGP): {len(c1_prefixes):,} prefixes")
+    print(f"  c2inferences (both-in-BGP, unrelated):          {len(c2_prefixes):,} prefixes")
+    print(f"  Combined unique inferred prefixes:              {len(combined):,}\n")
+
+    return combined
 
 
 # ── Load & collapse ────────────────────────────────────────────────────────────
 
-def load_and_collapse(path: str = BGP_FILE) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_collapse(
+    path: str = BGP_FILE,
+    ripe_prefixes: Optional[set] = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Loads raw events and returns two DataFrames:
       - transitions : one row per (prefix, tenant) hold period with duration
       - prefixes    : one row per prefix with aggregate churn stats
+
+    If ripe_prefixes is provided, only events whose prefix appears in the
+    RIPE-inferred lease set are retained. Prefixes not validated by the RIPE
+    methodology are dropped before any analysis.
     """
     df = pd.read_csv(path)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values(["prefix", "timestamp"], kind="mergesort").reset_index(drop=True)
-    print(f"Loaded {len(df):,} raw events across {df['prefix'].nunique():,} prefixes.\n")
+    print(f"Loaded {len(df):,} raw events across {df['prefix'].nunique():,} prefixes.")
+
+    if ripe_prefixes is not None:
+        before = df["prefix"].nunique()
+        df     = df[df["prefix"].isin(ripe_prefixes)].reset_index(drop=True)
+        after  = df["prefix"].nunique()
+        dropped = before - after
+        print(f"RIPE validation filter: {after:,} prefixes retained, "
+              f"{dropped:,} dropped ({dropped/before*100:.1f}% of raw input).\n")
+    else:
+        print("No RIPE validation filter applied.\n")
 
     transition_rows = []
     prefix_rows     = []
@@ -51,7 +112,7 @@ def load_and_collapse(path: str = BGP_FILE) -> tuple[pd.DataFrame, pd.DataFrame]
                 pd.to_datetime(collapsed[i]["timestamp"])
             ).total_seconds()
 
-            tenant = collapsed[i]["tenant_as"]
+            tenant      = collapsed[i]["tenant_as"]
             is_landlord = (tenant == original_landlord)
 
             holds.append({
@@ -68,12 +129,12 @@ def load_and_collapse(path: str = BGP_FILE) -> tuple[pd.DataFrame, pd.DataFrame]
             transition_rows.append(holds[-1])
 
         # Per-prefix summary
-        tenant_holds    = [h for h in holds if not h["is_landlord_hold"]]
-        all_durations   = [h["duration_sec"] for h in holds]
-        tenant_durations= [h["duration_sec"] for h in tenant_holds]
+        tenant_holds     = [h for h in holds if not h["is_landlord_hold"]]
+        all_durations    = [h["duration_sec"] for h in holds]
+        tenant_durations = [h["duration_sec"] for h in tenant_holds]
 
-        tenants_seen  = set()
-        pingpong      = 0
+        tenants_seen = set()
+        pingpong     = 0
         for h in holds:
             if h["tenant_as"] in tenants_seen:
                 pingpong += 1
@@ -143,8 +204,8 @@ def lease_duration_distribution(transitions: pd.DataFrame) -> pd.DataFrame:
     for label, lo, hi in buckets:
         count = ((tenant >= lo) & (tenant < hi)).sum()
         bucket_rows.append({
-            "bucket":      label,
-            "count":       count,
+            "bucket":       label,
+            "count":        count,
             "pct_of_total": round(count / len(tenant) * 100, 1),
         })
     bucket_df = pd.DataFrame(bucket_rows)
@@ -188,14 +249,14 @@ def churn_frequency_report(prefixes: pd.DataFrame) -> pd.DataFrame:
     t_labels  = ["1", "2", "3–5", "6–10", "11–50", "51+"]
     rows = []
     for label, (lo, hi) in zip(t_labels, t_buckets):
-        mask  = (prefixes["num_transitions"] >= lo) & (prefixes["num_transitions"] <= hi)
-        sub   = prefixes[mask]
+        mask = (prefixes["num_transitions"] >= lo) & (prefixes["num_transitions"] <= hi)
+        sub  = prefixes[mask]
         rows.append({
-            "transitions":      label,
-            "num_prefixes":     len(sub),
-            "pct_prefixes":     round(len(sub) / len(prefixes) * 100, 1),
-            "avg_churn_ratio":  round(sub["churn_ratio"].mean(), 4) if len(sub) else 0,
-            "pct_pingpong":     round((sub["pingpong_count"] > 0).mean() * 100, 1) if len(sub) else 0,
+            "transitions":     label,
+            "num_prefixes":    len(sub),
+            "pct_prefixes":    round(len(sub) / len(prefixes) * 100, 1),
+            "avg_churn_ratio": round(sub["churn_ratio"].mean(), 4) if len(sub) else 0,
+            "pct_pingpong":    round((sub["pingpong_count"] > 0).mean() * 100, 1) if len(sub) else 0,
         })
     freq_df = pd.DataFrame(rows)
     print("\nPrefix count by number of transitions:")
@@ -274,12 +335,12 @@ def tenant_behaviour_report(transitions: pd.DataFrame, prefixes: pd.DataFrame) -
     report = (
         tenant_trans.groupby("tenant_as")
         .agg(
-            total_holds       = ("prefix",       "count"),
-            unique_prefixes   = ("prefix",       "nunique"),
-            avg_hold_sec      = ("duration_sec", "mean"),
-            median_hold_sec   = ("duration_sec", "median"),
-            min_hold_sec      = ("duration_sec", "min"),
-            max_hold_sec      = ("duration_sec", "max"),
+            total_holds     = ("prefix",       "count"),
+            unique_prefixes = ("prefix",       "nunique"),
+            avg_hold_sec    = ("duration_sec", "mean"),
+            median_hold_sec = ("duration_sec", "median"),
+            min_hold_sec    = ("duration_sec", "min"),
+            max_hold_sec    = ("duration_sec", "max"),
         )
         .round(2)
         .reset_index()
@@ -323,13 +384,13 @@ def landlord_lease_profile(prefixes: pd.DataFrame) -> pd.DataFrame:
     report = (
         prefixes.groupby("original_landlord")
         .agg(
-            prefixes_leased    = ("prefix",               "count"),
-            unique_tenants     = ("num_unique_tenants",   "sum"),
-            avg_transitions    = ("num_transitions",      "mean"),
-            avg_churn_ratio    = ("churn_ratio",          "mean"),
-            pct_returned       = ("returned_to_landlord", "mean"),
-            avg_min_hold_sec   = ("tenant_min_hold_sec",  "mean"),
-            avg_median_hold_sec= ("tenant_median_hold_sec","mean"),
+            prefixes_leased     = ("prefix",                "count"),
+            unique_tenants      = ("num_unique_tenants",    "sum"),
+            avg_transitions     = ("num_transitions",       "mean"),
+            avg_churn_ratio     = ("churn_ratio",           "mean"),
+            pct_returned        = ("returned_to_landlord",  "mean"),
+            avg_min_hold_sec    = ("tenant_min_hold_sec",   "mean"),
+            avg_median_hold_sec = ("tenant_median_hold_sec","mean"),
         )
         .round(4)
         .reset_index()
@@ -346,10 +407,258 @@ def landlord_lease_profile(prefixes: pd.DataFrame) -> pd.DataFrame:
     return report
 
 
+# ── Visualizations ─────────────────────────────────────────────────────────────
+
+def plot_lease_duration_distribution(transitions: pd.DataFrame) -> None:
+    """
+    Two-panel figure:
+      Left  — histogram of tenant hold durations (log-scaled x-axis, hours)
+      Right — bar chart of bucket counts (< 1 min through > 24 hr)
+    """
+    tenant_sec = transitions[~transitions["is_landlord_hold"]]["duration_sec"]
+    tenant_hrs = tenant_sec / 3600
+
+    buckets = [
+        ("< 1 min",     0,       60),
+        ("1–5 min",     60,      300),
+        ("5–30 min",    300,     1800),
+        ("30 min–2 hr", 1800,    7200),
+        ("2–24 hr",     7200,    86400),
+        ("> 24 hr",     86400,   float("inf")),
+    ]
+    labels  = [b[0] for b in buckets]
+    counts  = [int(((tenant_sec >= lo) & (tenant_sec < hi)).sum()) for _, lo, hi in buckets]
+
+    with plt.style.context(PLOT_STYLE):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+        fig.suptitle("Lease duration distribution (tenant holds only)", fontsize=13)
+
+        # Left: log-x histogram
+        ax1.hist(tenant_hrs.clip(lower=1e-4), bins=80, color=PALETTE[0], edgecolor="none", alpha=0.85)
+        ax1.set_xscale("log")
+        ax1.set_xlabel("Hold duration (hours, log scale)")
+        ax1.set_ylabel("Number of holds")
+        ax1.xaxis.set_major_formatter(mticker.FuncFormatter(
+            lambda x, _: f"{x:.3g}h"
+        ))
+        for p in [50, 90, 99]:
+            v = np.percentile(tenant_hrs, p)
+            ax1.axvline(v, linestyle="--", linewidth=0.9,
+                        color=PALETTE[2], label=f"p{p}={v:.2f}h")
+        ax1.legend(fontsize=9)
+
+        # Right: bucket bar chart
+        bars = ax2.bar(labels, counts, color=PALETTE[1], edgecolor="none")
+        ax2.bar_label(bars, fmt="%d", padding=3, fontsize=9)
+        ax2.set_xlabel("Duration bucket")
+        ax2.set_ylabel("Number of holds")
+        ax2.tick_params(axis="x", rotation=25)
+
+        plt.tight_layout()
+        plt.savefig("plot_lease_duration.png", dpi=150, bbox_inches="tight")
+        plt.close()
+    print("  Saved → plot_lease_duration.png")
+
+
+def plot_churn_frequency(prefixes: pd.DataFrame) -> None:
+    """
+    Two-panel figure:
+      Left  — distribution of transitions-per-prefix (log y)
+      Right — churn ratio distribution (0–1) as a histogram
+    """
+    with plt.style.context(PLOT_STYLE):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+        fig.suptitle("Churn frequency per prefix", fontsize=13)
+
+        # Left: transitions per prefix
+        max_t = min(prefixes["num_transitions"].max(), 50)
+        ax1.hist(prefixes["num_transitions"].clip(upper=max_t),
+                 bins=range(1, max_t + 2), color=PALETTE[0],
+                 edgecolor="none", alpha=0.85)
+        ax1.set_yscale("log")
+        ax1.set_xlabel("Number of transitions (capped at 50)")
+        ax1.set_ylabel("Number of prefixes (log scale)")
+        ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+        # Right: churn ratio
+        ax2.hist(prefixes["churn_ratio"], bins=40,
+                 color=PALETTE[3], edgecolor="none", alpha=0.85)
+        ax2.set_xlabel("Churn ratio  (ping-pong transitions / total)")
+        ax2.set_ylabel("Number of prefixes")
+        med = prefixes["churn_ratio"].median()
+        ax2.axvline(med, linestyle="--", linewidth=0.9,
+                    color=PALETTE[2], label=f"median={med:.3f}")
+        ax2.legend(fontsize=9)
+
+        plt.tight_layout()
+        plt.savefig("plot_churn_frequency.png", dpi=150, bbox_inches="tight")
+        plt.close()
+    print("  Saved → plot_churn_frequency.png")
+
+
+def plot_intermediary_holds(transitions: pd.DataFrame, prefixes: pd.DataFrame) -> None:
+    """
+    Two-panel figure for ping-pong prefixes:
+      Left  — CDF of intermediary hold durations (minutes)
+      Right — top 20 most-churned prefixes (horizontal bar, pingpong_count)
+    """
+    pp_prefixes = prefixes[prefixes["pingpong_count"] > 0]["prefix"]
+    pp_trans    = transitions[transitions["prefix"].isin(pp_prefixes) &
+                              ~transitions["is_landlord_hold"]]
+
+    if pp_trans.empty:
+        print("  No ping-pong data — skipping plot_intermediary_holds.")
+        return
+
+    top20 = (prefixes[prefixes["pingpong_count"] > 0]
+             .sort_values("pingpong_count", ascending=False)
+             .head(20))
+
+    with plt.style.context(PLOT_STYLE):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig.suptitle("Intermediary hold times (ping-pong prefixes)", fontsize=13)
+
+        # Left: CDF
+        sorted_min = np.sort(pp_trans["duration_sec"] / 60)
+        cdf = np.arange(1, len(sorted_min) + 1) / len(sorted_min)
+        ax1.plot(sorted_min, cdf, color=PALETTE[0], linewidth=1.4)
+        ax1.set_xscale("log")
+        ax1.set_xlabel("Hold duration (minutes, log scale)")
+        ax1.set_ylabel("Cumulative fraction")
+        for p, lbl in [(50, "p50"), (90, "p90"), (99, "p99")]:
+            v = np.percentile(sorted_min, p)
+            ax1.axvline(v, linestyle="--", linewidth=0.8,
+                        color=PALETTE[2], label=f"{lbl}={v:.1f}m")
+        ax1.legend(fontsize=9)
+
+        # Right: top 20 prefixes
+        ax2.barh(top20["prefix"][::-1], top20["pingpong_count"][::-1],
+                 color=PALETTE[1], edgecolor="none")
+        ax2.set_xlabel("Ping-pong count")
+        ax2.tick_params(axis="y", labelsize=7)
+
+        plt.tight_layout()
+        plt.savefig("plot_intermediary_holds.png", dpi=150, bbox_inches="tight")
+        plt.close()
+    print("  Saved → plot_intermediary_holds.png")
+
+
+def plot_tenant_behaviour(transitions: pd.DataFrame) -> None:
+    """
+    Two-panel figure:
+      Left  — top 20 tenants by number of unique prefixes held (bar)
+      Right — scatter of unique_prefixes vs median hold duration (hours, log-log)
+    """
+    tenant_trans = transitions[~transitions["is_landlord_hold"]]
+
+    summary = (
+        tenant_trans.groupby("tenant_as")
+        .agg(
+            unique_prefixes = ("prefix",       "nunique"),
+            median_hold_hrs = ("duration_sec", lambda s: np.median(s) / 3600),
+            total_holds     = ("prefix",       "count"),
+        )
+        .reset_index()
+        .sort_values("unique_prefixes", ascending=False)
+    )
+
+    top20 = summary.head(20)
+
+    with plt.style.context(PLOT_STYLE):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig.suptitle("Tenant behaviour profile", fontsize=13)
+
+        # Left: top 20 by unique prefixes
+        bars = ax1.barh(top20["tenant_as"][::-1],
+                        top20["unique_prefixes"][::-1],
+                        color=PALETTE[0], edgecolor="none")
+        ax1.bar_label(bars, fmt="%d", padding=3, fontsize=8)
+        ax1.set_xlabel("Unique prefixes held")
+        ax1.tick_params(axis="y", labelsize=8)
+
+        # Right: scatter
+        ax2.scatter(summary["unique_prefixes"],
+                    summary["median_hold_hrs"].clip(lower=1e-4),
+                    s=summary["total_holds"].clip(upper=200),
+                    alpha=0.5, color=PALETTE[1], edgecolors="none")
+        ax2.set_xscale("log")
+        ax2.set_yscale("log")
+        ax2.set_xlabel("Unique prefixes held (log)")
+        ax2.set_ylabel("Median hold duration — hours (log)")
+        ax2.text(0.98, 0.02, "Dot size ∝ total holds (capped)",
+                 transform=ax2.transAxes, ha="right", fontsize=8,
+                 color="gray")
+
+        plt.tight_layout()
+        plt.savefig("plot_tenant_behaviour.png", dpi=150, bbox_inches="tight")
+        plt.close()
+    print("  Saved → plot_tenant_behaviour.png")
+
+
+def plot_landlord_profile(prefixes: pd.DataFrame) -> None:
+    """
+    Two-panel figure:
+      Left  — top 20 landlords by prefixes leased (bar)
+      Right — scatter of prefixes_leased vs avg_churn_ratio, coloured by pct_returned
+    """
+    report = (
+        prefixes.groupby("original_landlord")
+        .agg(
+            prefixes_leased = ("prefix",               "count"),
+            avg_churn_ratio = ("churn_ratio",          "mean"),
+            pct_returned    = ("returned_to_landlord", "mean"),
+        )
+        .reset_index()
+        .sort_values("prefixes_leased", ascending=False)
+    )
+
+    top20 = report.head(20)
+
+    with plt.style.context(PLOT_STYLE):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig.suptitle("Landlord lease profile", fontsize=13)
+
+        # Left: top 20 bar
+        bars = ax1.barh(top20["original_landlord"][::-1],
+                        top20["prefixes_leased"][::-1],
+                        color=PALETTE[4], edgecolor="none")
+        ax1.bar_label(bars, fmt="%d", padding=3, fontsize=8)
+        ax1.set_xlabel("Prefixes leased out")
+        ax1.tick_params(axis="y", labelsize=8)
+
+        # Right: scatter coloured by pct_returned
+        sc = ax2.scatter(
+            report["prefixes_leased"],
+            report["avg_churn_ratio"],
+            c=report["pct_returned"],
+            cmap="RdYlGn",
+            alpha=0.65,
+            s=40,
+            edgecolors="none",
+        )
+        cb = plt.colorbar(sc, ax=ax2)
+        cb.set_label("Fraction returned to landlord", fontsize=9)
+        ax2.set_xscale("log")
+        ax2.set_xlabel("Prefixes leased (log)")
+        ax2.set_ylabel("Avg churn ratio")
+
+        plt.tight_layout()
+        plt.savefig("plot_landlord_profile.png", dpi=150, bbox_inches="tight")
+        plt.close()
+    print("  Saved → plot_landlord_profile.png")
+
+
 # ── Run all ────────────────────────────────────────────────────────────────────
 
-def run_all(path: str = BGP_FILE):
-    transitions, prefixes = load_and_collapse(path)
+def run_all(
+    path: str = BGP_FILE,
+    c1_path: str = C1_FILE,
+    c2_path: str = C2_FILE,
+):
+    # Validate prefixes against RIPE inferences before any analysis
+    ripe_prefixes = load_ripe_inferred_prefixes(c1_path, c2_path)
+
+    transitions, prefixes = load_and_collapse(path, ripe_prefixes=ripe_prefixes)
 
     lease_duration_distribution(transitions)
     churn_frequency_report(prefixes)
@@ -358,7 +667,17 @@ def run_all(path: str = BGP_FILE):
     landlord_lease_profile(prefixes)
 
     print("\n" + "─" * 60)
-    print("  All reports complete.")
+    print("  Generating plots...")
+    print("─" * 60)
+
+    plot_lease_duration_distribution(transitions)
+    plot_churn_frequency(prefixes)
+    plot_intermediary_holds(transitions, prefixes)
+    plot_tenant_behaviour(transitions)
+    plot_landlord_profile(prefixes)
+
+    print("\n" + "─" * 60)
+    print("  All reports and plots complete.")
     print("─" * 60)
 
     return transitions, prefixes
