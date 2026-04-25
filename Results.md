@@ -1,6 +1,11 @@
 # Extension Results: IP Leasing & BGP Churn Analysis
 
-We analyzed the distribution and structure of inferred IP lease events using RIPE WHOIS registry data cross-referenced against BGP routing tables and AS relationship data. The methodology identifies prefixes where the BGP-originating AS has no organizational or business relationship to the RIPE-registered holder of the parent block, flagging these as inferred leases. Results are drawn from two inference groups and then fed into BGP churn analysis.
+We analyzed the distribution and structure of inferred IP lease events using RIPE WHOIS registry data cross-referenced against BGP routing tables and AS relationship data from the CAIDA database. The methodology identifies prefixes where the BGP-originating AS has no organizational or business relationship to the RIPE-registered holder of the parent block, flagging these as inferred leases. Results are drawn from two inference groups and then fed into BGP churn analysis.
+
+Prefix to AS data was from April 15 2026
+
+AS organization data was from April 01 2026
+
 
 ---
 
@@ -16,6 +21,8 @@ The RIPE inference pipeline identified **41,891 inferred leased prefixes** acros
 | Group 4 (c2) | Both child and parent in BGP; originating AS unrelated to both the registered holder and parent's BGP origin | 2,910 (6.9%) |
 
 Group 3 dominates because the more common leasing pattern sees a lessor hold a large allocated block without announcing it themselves, while routing individual sub-blocks to tenants. Group 4 captures the stricter case where a parallel routing hierarchy exists and must be checked against both the registry and BGP dimensions.
+
+Groups 1 & 2 were excluded as group on is IP adresses that are considered unused and Group 2 are IP adress ranges where a larger encompassing range of IP adresses has a BGP origin but not the range itself.
 
 ### 1.2 Prefix Size
 
