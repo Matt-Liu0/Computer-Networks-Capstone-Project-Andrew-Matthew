@@ -1,0 +1,7 @@
+bucket,count,pct_of_total
+< 1 min,60,73.2
+1–5 min,2,2.4
+5–30 min,3,3.7
+30 min–2 hr,3,3.7
+2–24 hr,9,11.0
+> 24 hr,5,6.1

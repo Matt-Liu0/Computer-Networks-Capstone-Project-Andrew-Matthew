@@ -120,7 +120,30 @@ Over **90% of all hold periods last under 5 minutes**. The percentile breakdown 
 
 The median hold of **14 seconds** is far shorter than any genuine infrastructure deployment would require, pointing to the validated events capturing rapid BGP origin cycling rather than stable leases. The heavy tail at p99 (4.3 hours) reflects the small fraction of prefixes held longer-term.
 
-*See `plot_lease_duration.png` for the log-scale histogram and bucket bar chart.*
+![Lease duration log-scale histogram and bucket bar chart](phase_2_lease_time_analysis/lease_time_report/plot/plot_lease_duration.png)
+
+#### Lease Durations for Low-Churn Prefixes
+
+To isolate stable leasing behaviour from automated cycling, the table below repeats the duration
+breakdown restricted to the **50 prefixes with ≤ 4 transitions** (at or below the median churn count
+from Section 2.2), covering 82 hold periods.
+
+| Bucket | Hold periods | Share |
+|---|---|---|
+| < 1 min | 60 | 73.2% |
+| 1–5 min | 2 | 2.4% |
+| 5–30 min | 3 | 3.7% |
+| 30 min–2 hr | 3 | 3.7% |
+| 2–24 hr | 9 | 11.0% |
+| > 24 hr | 5 | 6.1% |
+
+| Percentile | Seconds | Minutes |
+|---|---|---|
+| p50 | 1.0 s | 0.02 min |
+| p90 | 58,275.3 s | 971.26 min |
+| p99 | 125,987.0 s | 2,099.78 min |
+
+Notably, even in the low-churn subset the **< 1 min bucket still dominates at 73.2%**. This is likely explained by BGP convergence artifacts — brief withdrawals and re-announcements by the same tenant that the monitoring system records as hold-period boundaries rather than genuine tenant changes. With only 82 hold periods across 50 prefixes, a small number of such events heavily skews the lower end of the distribution. The tail, however, tells a different story: the p90 rises to **~16 hours** and the p99 to **~35 hours** — far longer than the p90 of 4.95 min and p99 of 257.6 min seen in the full dataset, which is itself dominated by high-churn prefixes. Genuinely stable leases exist in the validated set, but are rare and obscured by the automated cycling majority.
 
 ### 2.2 Churn Frequency per Prefix
 
@@ -137,7 +160,7 @@ The churn ratio — the fraction of a prefix's transitions that return to a prev
 | Median churn ratio | 0.50 |
 | Mean churn ratio | 0.51 |
 
-*See `plot_churn_frequency.png` for transition count and churn ratio distributions.*
+![Transition count per prefix and churn ratio distributions across 79 validated prefixes](phase_2_lease_time_analysis/lease_time_report/plot/plot_churn_frequency.png)
 
 ### 2.3 Intermediary Hold Times
 
@@ -159,7 +182,7 @@ The p50 of 14 seconds for intermediary holds strongly suggests automated BGP man
 | 89.37.99.0/24 | 267 | 265 | 0.993 | 546 |
 | 178.173.234.0/24 | 267 | 265 | 0.993 | 548 |
 
-*See `plot_intermediary_holds.png` for the CDF and top-20 most-churned prefixes.*
+![CDF of intermediary hold durations for ping-pong prefixes and ranked bar chart of the top 20 most-churned prefixes](phase_2_lease_time_analysis/lease_time_report/plot/plot_intermediary_holds.png)
 
 ### 2.4 Tenant Behaviour Profile
 
@@ -173,7 +196,7 @@ The dominant tenant by breadth is **AS6079**, holding 25 unique prefixes with a 
 | AS215727 | 3 | 3 | 37,551 |
 | AS48678 | 3 | 42 | 1 |
 
-*See `plot_tenant_behaviour.png` for the full top-20 bar chart and unique-prefixes vs. median-hold scatter.*
+![Top 20 tenants by prefix breadth and scatter plot of unique prefixes held versus median hold duration per AS](phase_2_lease_time_analysis/lease_time_report/plot/plot_tenant_behaviour.png)
 
 ### 2.5 Landlord Profile
 
@@ -187,7 +210,7 @@ The top landlord by volume is **AS54339**, whose 25 leased prefixes have a mean 
 | AS8473 | 2 | 0.000 | 100% |
 | AS215898 | 2 | 0.913 | 100% |
 
-*See `plot_landlord_profile.png` for the full top-20 bar chart and lease-volume vs. churn scatter.*
+![Top 20 landlord ASes by leased prefix volume and scatter plot of lease volume versus churn ratio](phase_2_lease_time_analysis/lease_time_report/plot/plot_landlord_profile.png)
 
 ---
 
@@ -196,3 +219,12 @@ The top landlord by volume is **AS54339**, whose 25 leased prefixes have a mean 
 The RIPE inference pipeline identified **41,891 leased prefixes**, concentrated at /24 granularity (85.8%), predominantly `ASSIGNED PA` status (86.0%), with the US, Russia, and Germany leading geographically. New lease registrations grew **228%** between 2022 and 2025, consistent with post-exhaustion IPv4 market dynamics.
 
 BGP churn analysis on the 109 RIPE-validated prefixes reveals a striking pattern: **90.8% of hold periods last under 5 minutes**, with a median of just 14 seconds. The high ping-pong rate (77% of prefixes, median churn ratio 0.50) and sub-second intermediary holds on the most active prefixes point to automated BGP origin cycling as the dominant behavior in the confirmed lease set — distinct from the stable, longer-term leases that the RIPE registry data alone would suggest.
+
+
+### Implications for Network Operators and Security Engineers
+
+These findings have several practical consequences:
+
+**For network operators**, the rapid growth of the secondary IPv4 market (228% since 2022) means that IP-to-organisation mappings in threat intelligence feeds and firewall allowlists are becoming less reliable. A /24 block assigned to a benign organisation in RIPE may be actively routed by an unrelated tenant. Operators should treat RIPE registration data as a necessary but not sufficient signal for trust decisions, and complement it with real-time BGP origin validation (e.g. RPKI ROAs).
+
+**For security engineers**, the sub-second and sub-minute hold periods observed in the high-churn set (median 14 s, p90 < 5 min) are inconsistent with any legitimate infrastructure deployment lifecycle. This pattern — particularly in prefixes like `45.155.255.0/24` with near-perfect ping-pong ratios — is a strong indicator of automated origin cycling, a technique used to evade IP-based blocklists and attribution. Detection systems that rely on static IP reputation scores will systematically fail against this class of behaviour; short-lived BGP event streams should be treated as a first-class signal for abuse triage.

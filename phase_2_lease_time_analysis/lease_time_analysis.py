@@ -218,6 +218,66 @@ def lease_duration_distribution(transitions: pd.DataFrame) -> pd.DataFrame:
     print("  Saved → report_lease_duration_percentiles.csv")
     return bucket_df
 
+# ── 1b. Lease duration distribution (low-churn prefixes only) ─────────────────
+
+def lease_duration_distribution_low_churn(transitions: pd.DataFrame, prefixes: pd.DataFrame) -> pd.DataFrame:
+    """
+    Same duration bucketing as lease_duration_distribution(), but restricted
+    to prefixes with <= 4 transitions (at or below the median churn count).
+    Isolates stable leasing behaviour from automated BGP cycling.
+    """
+    print("─" * 60)
+    print("1b. Lease Duration Distribution (low-churn prefixes only, ≤4 transitions)")
+    print("─" * 60)
+
+    # Filter to low-churn prefixes
+    low_churn_prefixes = prefixes[prefixes["num_transitions"] <= 4]["prefix"]
+    print(f"\n  {len(low_churn_prefixes):,} prefixes with ≤4 transitions")
+
+    tenant = transitions[
+        transitions["prefix"].isin(low_churn_prefixes) &
+        ~transitions["is_landlord_hold"]
+    ]["duration_sec"]
+
+    print(f"  {len(tenant):,} hold periods in this subset")
+
+    # Percentile table
+    pcts = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+    pct_df = pd.DataFrame({
+        "percentile": [f"p{p}" for p in pcts],
+        "seconds":    [round(np.percentile(tenant, p), 1) for p in pcts],
+        "minutes":    [round(np.percentile(tenant, p) / 60, 2) for p in pcts],
+        "hours":      [round(np.percentile(tenant, p) / 3600, 4) for p in pcts],
+    })
+    print("\nPercentile breakdown:")
+    print(pct_df.to_string(index=False))
+
+    # Bucket counts (identical bins to the main function)
+    buckets = [
+        ("< 1 min",      0,       60),
+        ("1–5 min",      60,      300),
+        ("5–30 min",     300,     1800),
+        ("30 min–2 hr",  1800,    7200),
+        ("2–24 hr",      7200,    86400),
+        ("> 24 hr",      86400,   float("inf")),
+    ]
+    bucket_rows = []
+    for label, lo, hi in buckets:
+        count = ((tenant >= lo) & (tenant < hi)).sum()
+        bucket_rows.append({
+            "bucket":       label,
+            "count":        count,
+            "pct_of_total": round(count / len(tenant) * 100, 1),
+        })
+    bucket_df = pd.DataFrame(bucket_rows)
+    print("\nBucket breakdown:")
+    print(bucket_df.to_string(index=False))
+
+    bucket_df.to_csv("report_lease_duration_buckets_low_churn.csv", index=False)
+    pct_df.to_csv("report_lease_duration_percentiles_low_churn.csv", index=False)
+    print("\n  Saved → report_lease_duration_buckets_low_churn.csv")
+    print("  Saved → report_lease_duration_percentiles_low_churn.csv")
+    return bucket_df
 
 # ── 2. Churn frequency per prefix ─────────────────────────────────────────────
 
@@ -661,6 +721,7 @@ def run_all(
     transitions, prefixes = load_and_collapse(path, ripe_prefixes=ripe_prefixes)
 
     lease_duration_distribution(transitions)
+    lease_duration_distribution_low_churn(transitions, prefixes)
     churn_frequency_report(prefixes)
     intermediary_hold_report(transitions, prefixes)
     tenant_behaviour_report(transitions, prefixes)
