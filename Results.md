@@ -1,4 +1,4 @@
-# Extension Results: IP Leasing & BGP Churn Analysis
+# Results: IP Leasing & BGP Churn Analysis
 
 We analyzed the distribution and structure of inferred IP lease events using RIPE WHOIS registry data cross-referenced against BGP routing tables and AS relationship data from the CAIDA database. The methodology identifies prefixes where the BGP-originating AS has no organizational or business relationship to the RIPE-registered holder of the parent block, flagging these as inferred leases. Results are drawn from two inference groups and then fed into BGP churn analysis.
 
@@ -158,20 +158,22 @@ The validated prefix set shows extreme churn. The mean transition count per pref
 
 The churn ratio — the fraction of a prefix's transitions that return to a previously-seen tenant — has a **median of 0.50 and mean of 0.51**, meaning that on average, half of all observed transitions are ping-pong repeats. **61 of 79 prefixes (77%)** exhibit at least one ping-pong event.
 
-| Metric | Value |
-|---|---|
-| Prefixes with ping-pong | 61 / 79 (77%) |
-| Median transitions per prefix | 4 |
-| Mean transitions per prefix | 52.97 |
-| Max transitions (single prefix) | 1,925 |
-| Median churn ratio | 0.50 |
-| Mean churn ratio | 0.51 |
+| Transitions | Prefixes | % of total | Avg churn ratio | % with ping-pong |
+|---|---|---|---|---|
+| 1 | 7 | 8.9% | 0.00 | 0.0% |
+| 2 | 11 | 13.9% | 0.00 | 0.0% |
+| 3–5 | 35 | 44.3% | 0.28 | 100.0% |
+| 6–10 | 5 | 6.3% | 0.42 | 100.0% |
+| 11–50 | 14 | 17.7% | 0.47 | 100.0% |
+| 51+ | 7 | 8.9% | 0.50 | 100.0% |
+
+Notably, all prefixes with 3 or more transitions exhibit at least one ping-pong event, and the churn ratio rises steadily with transition count — converging toward ~0.50 for the most active prefixes, consistent with a back-and-forth cycling pattern between two tenants.
 
 ![Transition count per prefix and churn ratio distributions across 79 validated prefixes](phase_2_lease_time_analysis/lease_time_report/plot/plot_churn_frequency.png)
 
 ### 2.3 Intermediary Hold Times
 
-For the 61 ping-pong prefixes, intermediary hold durations are even shorter than the overall distribution, confirming that repeated tenants acquire and release prefixes in rapid succession:
+For the ping-pong prefixes, intermediary hold durations are even shorter than the overall distribution, confirming that repeated tenants acquire and release prefixes in rapid succession:
 
 | Percentile | Duration |
 |---|---|
@@ -183,17 +185,17 @@ The p50 of 14 seconds for intermediary holds strongly suggests automated BGP man
 
 | Prefix | Transitions | Ping-pong count | Churn ratio | Avg hold (sec) |
 |---|---|---|---|---|
-| 45.155.255.0/24 | 1,925 | 1,923 | 0.999 | 113 |
-| 5.183.116.0/24 | 710 | 708 | 0.997 | 9 |
-| 185.147.34.0/24 | 269 | 267 | 0.993 | 543 |
-| 89.37.99.0/24 | 267 | 265 | 0.993 | 546 |
-| 178.173.234.0/24 | 267 | 265 | 0.993 | 548 |
+| 45.155.255.0/24 | 1,925 | 962 | 0.500 | 113 |
+| 5.183.116.0/24 | 710 | 354 | 0.499 | 9 |
+| 185.147.34.0/24 | 269 | 134 | 0.498 | 543 |
+| 89.37.99.0/24 | 267 | 133 | 0.498 | 546 |
+| 178.173.234.0/24 | 267 | 133 | 0.498 | 548 |
 
 ![CDF of intermediary hold durations for ping-pong prefixes and ranked bar chart of the top 20 most-churned prefixes](phase_2_lease_time_analysis/lease_time_report/plot/plot_intermediary_holds.png)
 
 ### 2.4 Tenant Behaviour Profile
 
-The dominant tenant by breadth is **AS6079**, holding 25 unique prefixes with a median hold of just 0.5 seconds — a profile consistent with automated BGP origin rotation. The next tier of tenants (AS213122, AS54454, AS215727) hold 3 prefixes each but with much longer median holds (288 s, 749 s, and 37,551 s respectively), suggesting a different use pattern — possibly legitimate short-to-medium term leases within the confirmed set.
+The dominant tenant by total hold count is **AS400395**, with 963 holds on a single prefix (`45.155.255.0/24`) and a median hold of just 20 seconds. **AS6079** remains the broadest tenant by prefix coverage, holding 25 unique prefixes with a median hold of 0.5 seconds — a profile consistent with automated BGP origin rotation. The next tier of tenants (AS213122, AS54454, AS215727) hold 3 prefixes each but with much longer median holds (288 s, 749 s, and 37,551 s respectively), suggesting a different use pattern — possibly legitimate short-to-medium term leases within the confirmed set.
 
 | AS | Unique prefixes | Total holds | Median hold (sec) |
 |---|---|---|---|
@@ -207,15 +209,15 @@ The dominant tenant by breadth is **AS6079**, holding 25 unique prefixes with a 
 
 ### 2.5 Landlord Profile
 
-The top landlord by volume is **AS54339**, whose 25 leased prefixes have a mean churn ratio of 0.50 and a return rate of 0% — the prefixes never return to the landlord, consistent with a broker that routes address space permanently outward. **AS931** holds 3 prefixes with a near-perfect churn ratio of 0.993 and a 100% return rate, meaning the prefixes cycle back repeatedly in an almost entirely ping-pong pattern.
+The top landlord by volume is **AS54339**, whose 25 leased prefixes have a mean churn ratio of **0.25** and a return rate of 0% — the prefixes never return to the landlord, consistent with a broker routing address space permanently outward. **AS931** holds 3 prefixes with a churn ratio of 0.498 and a 100% return rate, meaning prefixes cycle back to the landlord between every tenant transition. **AS5511** holds 3 prefixes with zero churn and zero returns — each prefix was handed to a single tenant and never came back, the cleanest long-term lease profile in the dataset.
 
 | Landlord AS | Prefixes leased | Avg churn ratio | % returned |
 |---|---|---|---|
-| AS54339 | 25 | 0.500 | 0% |
-| AS931 | 3 | 0.993 | 100% |
+| AS54339 | 25 | 0.250 | 0% |
+| AS931 | 3 | 0.498 | 100% |
 | AS5511 | 3 | 0.000 | 0% |
 | AS8473 | 2 | 0.000 | 100% |
-| AS215898 | 2 | 0.913 | 100% |
+| AS215898 | 2 | 0.478 | 100% |
 
 ![Top 20 landlord ASes by leased prefix volume and scatter plot of lease volume versus churn ratio](phase_2_lease_time_analysis/lease_time_report/plot/plot_landlord_profile.png)
 
@@ -225,8 +227,7 @@ The top landlord by volume is **AS54339**, whose 25 leased prefixes have a mean 
 
 The RIPE inference pipeline identified **41,891 leased prefixes**, concentrated at /24 granularity (85.8%), predominantly `ASSIGNED PA` status (86.0%), with the US, Russia, and Germany leading geographically. New lease registrations grew **228%** between 2022 and 2025, consistent with post-exhaustion IPv4 market dynamics.
 
-BGP churn analysis on the 109 RIPE-validated prefixes reveals a striking pattern: **90.8% of hold periods last under 5 minutes**, with a median of just 14 seconds. The high ping-pong rate (77% of prefixes, median churn ratio 0.50) and sub-second intermediary holds on the most active prefixes point to automated BGP origin cycling as the dominant behavior in the confirmed lease set — distinct from the stable, longer-term leases that the RIPE registry data alone would suggest.
-
+BGP churn analysis on the 109 RIPE-validated prefixes reveals a striking pattern: **90.8% of hold periods last under 5 minutes**, with a median of just 14 seconds. The high ping-pong rate (77% of prefixes, median churn ratio 0.50) and sub-second intermediary holds on the most active prefixes point to automated BGP origin cycling as the dominant behavior in the confirmed lease set — distinct from the stable, longer-term leases that the RIPE registry data alone would suggest. However, the low-churn subset (prefixes with ≤ 4 transitions) reveals a contrasting population: p90 hold durations of ~16 hours and p99 of ~35 hours, confirming that stable, operationally genuine leases exist within the validated set but are a small minority obscured by the high-churn majority.
 
 ### Implications for Network Operators and Security Engineers
 
@@ -234,4 +235,4 @@ These findings have several practical consequences:
 
 **For network operators**, the rapid growth of the secondary IPv4 market (228% since 2022) means that IP-to-organisation mappings in threat intelligence feeds and firewall allowlists are becoming less reliable. A /24 block assigned to a benign organisation in RIPE may be actively routed by an unrelated tenant. Operators should treat RIPE registration data as a necessary but not sufficient signal for trust decisions, and complement it with real-time BGP origin validation (e.g. RPKI ROAs).
 
-**For security engineers**, the sub-second and sub-minute hold periods observed in the high-churn set (median 14 s, p90 < 5 min) are inconsistent with any legitimate infrastructure deployment lifecycle. This pattern — particularly in prefixes like `45.155.255.0/24` with near-perfect ping-pong ratios — is a strong indicator of automated origin cycling, a technique used to evade IP-based blocklists and attribution. Detection systems that rely on static IP reputation scores will systematically fail against this class of behaviour; short-lived BGP event streams should be treated as a first-class signal for abuse triage.
+**For security engineers**, the sub-second and sub-minute hold periods observed in the high-churn set (median 14 s, p90 < 5 min) are inconsistent with any legitimate infrastructure deployment lifecycle. This pattern, particularly in prefixes like `45.155.255.0/24` with 1,925 transitions and a churn ratio of 0.50, is a strong indicator of automated origin cycling, a technique used to evade IP-based blocklists and attribution. Detection systems that rely on static IP reputation scores will systematically fail against this class of behaviour; short-lived BGP event streams should be treated as a first-class signal for abuse triage.

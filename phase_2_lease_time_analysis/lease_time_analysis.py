@@ -20,8 +20,8 @@ import seaborn as sns
 from typing import Optional
 
 BGP_FILE    = "./phase_2_lease_time_analysis/lease_start_events.csv"
-C1_FILE     = "c1inference"
-C2_FILE     = "c2inferences"
+C1_FILE     = "./phase_1_leasing_inferences/c1inferences"
+C2_FILE     = "./phase_1_leasing_inferences/c2inferences"
 
 import matplotlib.style as _mplstyle
 PLOT_STYLE = "seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in _mplstyle.available else "seaborn-whitegrid"
@@ -136,9 +136,10 @@ def load_and_collapse(
         tenants_seen = set()
         pingpong     = 0
         for h in holds:
-            if h["tenant_as"] in tenants_seen:
-                pingpong += 1
-            tenants_seen.add(h["tenant_as"])
+            if not h["is_landlord_hold"]:
+                if h["tenant_as"] in tenants_seen:
+                    pingpong += 1
+                tenants_seen.add(h["tenant_as"])
 
         prefix_rows.append({
             "prefix":                  prefix,
