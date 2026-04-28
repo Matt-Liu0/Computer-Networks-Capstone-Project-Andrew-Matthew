@@ -17,13 +17,28 @@ This project investigates the operational lifecycle of leased IP addresses and t
 ## 2. Phase 1: Foundational Inference (`RIPE.ipynb`)
 
 This phase replicates the methodology from Section 5.1 of the *Sublet Your Subnet* paper. The notebook merges administrative WHOIS data with BGP snapshots to categorize IP blocks.
+### A. Data Sources
+The three data sources required to complete phase 1 which were too large to add to git hub are as follows:
+1. **RIPE WHOIS database:** Large whois database detailing info on most european addresses, organizations, ASes and more.
+ - **Acquired at:** https://ftp.ripe.net/ripe/dbase/
+2. **AS Relationships database:** Database from CAIDA compiling and categorizing all customer-provider relasionships between ASes in europe
+ - **Acquired at:** https://publicdata.caida.org/datasets/as-relationships/ 
+3. **AS Organizations database:** Database from CAIDA linking ASes to the organizations that they are owned by.
+ - **Acquired at:** https://publicdata.caida.org/datasets/as-organizations/ 
+4. **Routviews database** Database form CAIDA which matches up prefixes to ASes
+ - **Acquired at:** https://publicdata.caida.org/datasets/routing/routeviews-prefix2as/
 
-**Key Functional Steps:**
-1. **WHOIS Parsing:** Extracts `inetnum`, `organisation`, and `aut-num` objects to build an address allocation tree.
-2. **AS Mapping:** Uses CAIDA datasets to map Autonomous Systems to their parent organizations.
-3. **BGP Origin Comparison:** Searches for exact-matching BGP origins for "leaf" nodes.
-4. **Inference Logic:** - **ISP Customer:** If a business relationship (Provider-to-Customer) exists between the IP holder and the BGP announcer.
-   - **Leased:** If the BGP announcer is an unrelated third party (the "Bold Orange Rectangle" in the paper's methodology).
+### B. Parsing DBs
+1. We split the RIPE DB into 3 seperate dataframes containing the IPv4 range entries (inetnum), the organization entries, and the AS entries (aut-num). The IPv4 entries are formatted into prefixes before being mapped to a radix tree for easy lookups
+2. The AS relationships database is parsed into a dictionary of dictionaries that first sorts by ASN then by relationship and contains a set of all ASNs with that relationship to the first ASN.
+3. The AS organizations database is parsed into a simple AS to Org lookup table using a dictionary
+4. The routviews database is parsed as a radix tree to help in the lookup of ASes.
+
+### C. Inference Logic
+   By looking at the BGP origins of our prefixes, we can find our two inference:
+   1. If the prefix has a BGP origin but its root(the IP range directly allocated by RIPE) is not, then we look for an customer provider relationship using our AS realtions DB. If there is no relationship then we categorize it as a Lease  
+   2. If both the prefix and its root have BGP origins then we look to see if there is any relation with the Prefix and the root in BGP or in our AS relations DB.
+
 
 ---
 

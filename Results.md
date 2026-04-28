@@ -74,6 +74,9 @@ The following organizations hold the largest number of inferred leased prefixes 
 | ICI Bucuresti | 575 |
 | Ace Data Centers II, LLC | 486 |
 
+![Top3]
+(RIPE_organizations.png)
+
 Several of these (Cyber Assets FZCO, DIAMOND IP BROKERS FZCO, GOLD IP L.L.C-FZ, Resilans AB) are recognized IP brokers — entities whose primary business is acquiring and re-leasing address space. The presence of large legacy institutions (Ukrtelecom, ANO RIPN) reflects a different dynamic: organizations with historically large allocations from the early RIPE era that have monetized surplus space over time.
 
 The Group 4 (c2) lessor profile differs notably, dominated by transit providers — GTT Communications, GCI Network Solutions — which delegate sub-blocks to customers under their own routing umbrella while the customer routes independently.
