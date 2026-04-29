@@ -91,7 +91,7 @@ Comparing these to the excerpt from table 3 from "Sublet your subnet", we can se
 
 ![Image](phase_1_leasing_inferences/RIPE_organizations.png)
 
-Another interesting note is the inclusion of ACE Data Centers on our list. while we dont know if it also existed on an expanded version of the original papers chart as theirs is more in depth, I exists only on the ARIN secion of this chart which means that it conducts a majority of its operations in North America. Though now it has reached only slightly lower IP leasing numbers in Europe now than it had in north America pre 2024.
+Another interesting note is the inclusion of ACE Data Centers on our list. while we dont know if it also existed on an expanded version of the original papers chart as theirs is more in depth, It exists only on the ARIN secion of this chart which means that it conducts a majority of its operations in North America. Though now it has reached only slightly lower IP leasing numbers in Europe now than it had in north America pre 2024. This reflects the growing multinationality of corporations not just inthe IP leasing space but across much of the tech sector as a whole
 
 ### 1.6 Market Growth Over Time
 
