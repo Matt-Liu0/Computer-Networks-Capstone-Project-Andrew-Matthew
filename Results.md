@@ -15,14 +15,23 @@ AS organization data was from April 01 2026
 
 The RIPE inference pipeline identified **41,891 inferred leased prefixes** across the RIPE NCC service region. These are split across two detection groups:
 
+**Our findings**
 | Group | Detection condition | Prefixes |
 |---|---|---|
 | Group 3 (c1) | Child prefix in BGP, parent block absent from BGP; originating AS unrelated to registered holder | 38,981 (93.1%) |
 | Group 4 (c2) | Both child and parent in BGP; originating AS unrelated to both the registered holder and parent's BGP origin | 2,910 (6.9%) |
 
+**Original paper**
+| Group | Detection condition | Prefixes |
+|---|---|---|
+| Group 3 (c1) | Child prefix in BGP, parent block absent from BGP; originating AS unrelated to registered holder | 26,774 (93.5%) |
+| Group 4 (c2) | Both child and parent in BGP; originating AS unrelated to both the registered holder and parent's BGP origin | 1,872 (6.5%) |
+
+Comparing the two tables, It is nice that our artios between the two groups have stayed almost exactly the same with a large majority being attributed to group 3 leases. We also see a large increse in th total number of leases up almost 50% from ~28,000 to ~42,000 which is interesting to see due to RIPE IPv4 addreses being all allocated around 5 years before the paper was published. This means that the increase in leasing likely implies one of two things, either IPv4 addresses might have become more valuable and thus more holders of IP addresses have decided that leasing out their IP addresses is financially beneficial, or more legacy IP addresses have been reclaimed recently. This 50% increase seems a bit large for these factors to be the only ones at play so there are more things contributing to this increase.
+
 Group 3 dominates because the more common leasing pattern sees a lessor hold a large allocated block without announcing it themselves, while routing individual sub-blocks to tenants. Group 4 captures the stricter case where a parallel routing hierarchy exists and must be checked against both the registry and BGP dimensions.
 
-Groups 1 & 2 were excluded as group on is IP adresses that are considered unused and Group 2 are IP adress ranges where a larger encompassing range of IP adresses has a BGP origin but not the range itself.
+Groups 1 & 2 were excluded from consideration as group one contains IP adresses that are considered unused due to having no BGP origin and Group 2 are IP adress ranges where a larger encompassing range of IP adresses has a BGP origin but not the range itself.
 
 ### 1.2 Prefix Size
 
@@ -74,12 +83,15 @@ The following organizations hold the largest number of inferred leased prefixes 
 | ICI Bucuresti | 575 |
 | Ace Data Centers II, LLC | 486 |
 
-![Top3]
-(RIPE_organizations.png)
-
 Several of these (Cyber Assets FZCO, DIAMOND IP BROKERS FZCO, GOLD IP L.L.C-FZ, Resilans AB) are recognized IP brokers — entities whose primary business is acquiring and re-leasing address space. The presence of large legacy institutions (Ukrtelecom, ANO RIPN) reflects a different dynamic: organizations with historically large allocations from the early RIPE era that have monetized surplus space over time.
 
 The Group 4 (c2) lessor profile differs notably, dominated by transit providers — GTT Communications, GCI Network Solutions — which delegate sub-blocks to customers under their own routing umbrella while the customer routes independently.
+
+Comparing these to the excerpt from table 3 from "Sublet your subnet", we can see that much has changed in the Top lessors on these IP addresses. Although they only list the top 3 from RIPE due to their study including more RIRs, we can see that all three of theirs are still in our top 10 list. Interestingly though, all three of these organizations have remained similarly sized or grown. Given our previous finding of overall leasing having massively increased in the past few years, this leads us to the conclusion that this new growth in leasing is surprisingly not concentrated around previous market leaders like one might expect but instead with new or previously much smaller lessors.
+
+![Image](phase_1_leasing_inferences/RIPE_organizations.png)
+
+Another interesting note is the inclusion of ACE Data Centers on our list. while we dont know if it also existed on an expanded version of the original papers chart as theirs is more in depth, I exists only on the ARIN secion of this chart which means that it conducts a majority of its operations in North America. Though now it has reached only slightly lower IP leasing numbers in Europe now than it had in north America pre 2024.
 
 ### 1.6 Market Growth Over Time
 
